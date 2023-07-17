@@ -1,0 +1,16 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<classpath>
+	<classpathentry kind="con" path="org.eclipse.jdt.launching.JRE_CONTAINER/org.eclipse.jdt.internal.debug.ui.launcher.StandardVMType/JavaSE-18">
+		<attributes>
+			<attribute name="module" value="true"/>
+		</attributes>
+	</classpathentry>
+	<classpathentry kind="src" path="src"/>
+	<classpathentry exported="true" kind="lib" path="/de.enflexit.ea.lib.matrixCalculations/Jama-1.0.3.jar">
+		<attributes>
+			<attribute name="javadoc_location" value="https://math.nist.gov/javanumerics/jama/doc/"/>
+		</attributes>
+	</classpathentry>
+	<classpathentry kind="src" path="/OPCUA"/>
+	<classpathentry kind="output" path="bin"/>
+</classpath>
