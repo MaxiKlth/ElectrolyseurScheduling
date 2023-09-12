@@ -1,9 +1,4 @@
-
-import org.apache.poi.ss.usermodel.*;
-import org.apache.poi.xssf.usermodel.XSSFWorkbook;
-
-import java.io.FileOutputStream;
-import java.io.IOException;
+import org.apache.poi.util.IdentifierManager;
 
 public class Agent {
 	// Agent-Classification
@@ -22,18 +17,18 @@ public class Agent {
 	private double OMEx_nt; // O&M-Kosten bezogen auf Lebensdauer
 	private double PEL; // Elektrische Leistung des Elektrolyseur
 	private double Ae; // Electrode Area
-	private double ProductionCoefficientA; // Produktion = A*x^2 + B*X + C*x + D
+	private double ProductionCoefficientA; // Produktion = A*x^3 + B*X^2 + C*x + D
 	private double ProductionCoefficientB;
 	private double ProductionCoefficientC;
 	private double ProductionCoefficientD;
-	private double Demand_t; //Demand in Period t 
+	private double Demand_t; // Demand in Period t
+	private double maxCostChange; //Agent mit der größten gewichtet Kostenänderungsrate GradientLCOH*LCOH
+	private double ownCostChange; // Eigene Kostenänderungsrate 
 
 	// Testparameter
 	private double ElectricityPrice = 0.04; // Current Electricity Price (€/kWh)
-	private double PowerAvailable_t = 60; // Available Power for Period t //40
-	double MaxLeistung = 14.051 / 100; // aus ADMM-Excel Tabelle abgeleitet (IOp*VOp), durch 100 um Prozent zu
-										// entfernen
-
+	double MaxLeistung = 14.051 / 100; // aus ADMM-Excel Tabelle abgeleitet (IOp*VOp), durch 100 um Prozent zu entfernen
+										
 	// Lagrange Multiplicators
 	private double lambda; // Lagrange-Multiplicator for Demand Constraint
 	private double penaltyFactor; // Penalty-Term
@@ -43,6 +38,11 @@ public class Agent {
 	private double sumProduction;
 	private double sumPowerDemand;
 	private double sumCost;
+	private double minLCOH;
+	private double ownLCOH;
+	private double dzCost;
+	private double dzProduction;
+	private int N; //Number of Agents 
 
 	// Equations
 	private double mH2_nt;
@@ -89,14 +89,40 @@ public class Agent {
 		double CapExPerKg = (CapEX_nt + OMEx_nt) / mH2_nt;
 		double OpExPerKg = (MaxLeistung * x * Ae * ElectricityPrice) / mH2_nt;
 		double cost = OpExPerKg + CapExPerKg;
-		double power = x;
 		double lambda = this.lambda;
 		double penaltyfactor = this.penaltyFactor;
 		double currentX = x;
 		double currentZ = z;
+		double LCOHGradientValue;
+		double objectiveFunctionGradientValue; 
+		
+		//Gradient ObjectiveFunction
+		double term1 = (Ae*ElectricityPrice*MaxLeistung)/(N*(ProductionCoefficientA * Math.pow(x, 3) + ProductionCoefficientB * Math.pow(x, 2)
+		+ ProductionCoefficientC * x + ProductionCoefficientD));
+		
+		double term2 = (Ae*ElectricityPrice*MaxLeistung)/(ProductionCoefficientA * Math.pow(x, 3) + ProductionCoefficientB * Math.pow(x, 2)
+		+ ProductionCoefficientC * x + ProductionCoefficientD);
+		
+		double term3 = ((Ae*ElectricityPrice*x*MaxLeistung+OMEx_nt+CapEX_nt)*(3 * ProductionCoefficientA * Math.pow(x, 2) + 2 * ProductionCoefficientB * x
+				+ ProductionCoefficientC))/(N*(Math.pow(ProductionCoefficientA * Math.pow(x, 3) + ProductionCoefficientB * Math.pow(x, 2)
+		+ ProductionCoefficientC * x + ProductionCoefficientD, 2)));
+		
+		double term4 = ((Ae*ElectricityPrice*x*MaxLeistung+OMEx_nt+CapEX_nt)*(3 * ProductionCoefficientA * Math.pow(x, 2) + 2 * ProductionCoefficientB * x
+				+ ProductionCoefficientC))/(Math.pow(ProductionCoefficientA * Math.pow(x, 3) + ProductionCoefficientB * Math.pow(x, 2)
+		+ ProductionCoefficientC * x + ProductionCoefficientD, 2));
+	
+		objectiveFunctionGradientValue  = term1 + term2 - term3 - term4 + lambda;
+		
+		//Gradient LCOH
+		LCOHGradientValue = term2 - term4;		
 
-		matrix.updateData(this.agentId, this.iteration, mH2_nt, power, cost, lambda, penaltyfactor, currentX, currentZ);
-
+		//Update Matrix
+		matrix.updateData(this.agentId, this.iteration, mH2_nt, cost, lambda, penaltyfactor, currentX, currentZ,
+				dzProduction, dzCost, objectiveFunctionGradientValue, LCOHGradientValue);
+		
+		//Save own Cost Change Value
+		ownCostChange = LCOHGradientValue*cost;
+		
 		this.iteration++;
 	}
 
@@ -106,6 +132,10 @@ public class Agent {
 		sumCost = matrix.getCosts(agentId, iteration);
 		sumPowerDemand = matrix.getPower(agentId, iteration);
 		sumProduction = matrix.getProduction(agentId, iteration);
+		minLCOH = matrix.getMinLCOH(agentId, iteration); //gibt die kleinsten LCOH aus, ausgenommen des eigenen Agenten --> vielleicht noch anpassen und eigenen Agenten inkludieren
+		ownLCOH = matrix.getOwnLCOH(agentId, iteration); //Gibt die eigenen Kosten eines Agenten wider
+		N = matrix.getNumAgents(); // get Number of Agents
+		maxCostChange = matrix.getMaxCostChange();	
 	}
 
 	// ----- Optimization -----
@@ -115,19 +145,18 @@ public class Agent {
 		double upperBound = maxPower;
 
 		// Initialize Lagrange multipliers and penalty term
-		lambda = 0.0005;
-		penaltyFactor = 0.000000036; // für 3 Agenten
-
+		lambda = 0.0065;
+				
 		// Generieren eines zufälligen Werts für x innerhalb der Grenzen
 		x = lowerBound + Math.random() * (upperBound - lowerBound); // Initial Value for x
 		z = lowerBound + Math.random() * (upperBound - lowerBound); // Initial Value for z
 		previousX = x;
-		System.out.printf("Startwert x: %.3f\n ", x);
-		System.out.printf("Startwert z: %.3f\n ", z);
 	}
 
+	// ----- Minimization of X -----
+	
 	public double minimizeLx() {
-		double learningRate = 0.0005; // Lernrate für die Optimierung
+		double learningRate = 0.003; // Lernrate für die Optimierung
 		double epsilon = 1e-6; // Genauigkeit oder Abbruchkriterium
 		double previousX = getPreviousX();
 		double minX = minPower; // Mindestwert für x
@@ -160,41 +189,60 @@ public class Agent {
 	}
 
 	private double computeDerivativeX(double x) {
+		//TODO
+		//Testparameter, noch verbessern!
+		N = 3;
+		
+		double term1 = (Ae*ElectricityPrice*MaxLeistung)/(N*(ProductionCoefficientA * Math.pow(x, 3) + ProductionCoefficientB * Math.pow(x, 2)
+		+ ProductionCoefficientC * x + ProductionCoefficientD));
+		
+		double term2 = (Ae*ElectricityPrice*MaxLeistung)/(ProductionCoefficientA * Math.pow(x, 3) + ProductionCoefficientB * Math.pow(x, 2)
+		+ ProductionCoefficientC * x + ProductionCoefficientD);
+		
+		double term3 = ((Ae*ElectricityPrice*x*MaxLeistung+OMEx_nt+CapEX_nt)*(3 * ProductionCoefficientA * Math.pow(x, 2) + 2 * ProductionCoefficientB * x
+				+ ProductionCoefficientC))/(N*(Math.pow(ProductionCoefficientA * Math.pow(x, 3) + ProductionCoefficientB * Math.pow(x, 2)
+		+ ProductionCoefficientC * x + ProductionCoefficientD, 2)));
+		
+		double term4 = ((Ae*ElectricityPrice*x*MaxLeistung+OMEx_nt+CapEX_nt)*(3 * ProductionCoefficientA * Math.pow(x, 2) + 2 * ProductionCoefficientB * x
+				+ ProductionCoefficientC))/(Math.pow(ProductionCoefficientA * Math.pow(x, 3) + ProductionCoefficientB * Math.pow(x, 2)
+		+ ProductionCoefficientC * x + ProductionCoefficientD, 2));
+	
+		double GradientLCOH = term1 + term2 - term3 - term4 + lambda;
 
-		double NennerStrafterm = ProductionCoefficientA * Math.pow(x, 3) + ProductionCoefficientB * Math.pow(x, 2)
-				+ ProductionCoefficientC * x + ProductionCoefficientD;
-		double GradientLCOH = ((Ae * ElectricityPrice * MaxLeistung) / NennerStrafterm
-				- ((Ae * ElectricityPrice * MaxLeistung * x + OMEx_nt + CapEX_nt)
-						* (3 * ProductionCoefficientA * Math.pow(x, 2) + 2 * ProductionCoefficientB * x
-								+ ProductionCoefficientC))
-						/ Math.pow(NennerStrafterm, 2))
-				+ lambda;
-
-		// Erstmal noch unberücksichtigt
-		double GradientStraftermProduktionsmenge = penaltyFactor
-				* (3 * ProductionCoefficientA * Math.pow(x, 2) + 2 * ProductionCoefficientB * x
-						+ ProductionCoefficientC)
-				* (ProductionCoefficientA * Math.pow(x, 3) + ProductionCoefficientB * Math.pow(x, 2)
-						+ ProductionCoefficientC * x + ProductionCoefficientD - Demand_t + sumProduction);
-		// double dLdx = GradientLCOH + GradientStraftermProduktionsmenge;
 		double dLdx = GradientLCOH;
 
 		return dLdx;
 	}
 
+	// ----- Minimization of Z (Produktionsmenge) -----
+	
 	public double minimizeLz() {
 		double z = getCurrentZ(); // Startwert für z
+		setPreviousZ(z);
 		double epsilon = 1e-6; // Genauigkeit oder Abbruchkriterium
 
 		do {
-			double dz = sumProduction + ProductionCoefficientA * Math.pow(z, 3)
+			// --- g(z)---
+			// Produktionsabweichung in g(z)
+			dzProduction = sumProduction + ProductionCoefficientA * Math.pow(z, 3)
 					+ ProductionCoefficientB * Math.pow(z, 2) + ProductionCoefficientC * z + ProductionCoefficientD
-					- Demand_t; // g(z)
-			double dLdz = (3 * ProductionCoefficientA * Math.pow(z, 2) + 2 * ProductionCoefficientB * z
-					+ ProductionCoefficientC - lambda); // Erste Ableitung von g(z)
+					- Demand_t;
+			// --- Ende g(z) ----
+
+			// --- Ableitung von g(z) [g'(z)]---
+			// Ableitung Produktionsabweichung in g(z)
+			double dLdzProduction = (3 * ProductionCoefficientA * Math.pow(z, 2) + 2 * ProductionCoefficientB * z
+					+ ProductionCoefficientC - lambda);
+
+			// --- Ende Ableitung g(z) [g'(z)] ----
 
 			// Anwendung des Newton-Verfahrens zur Annäherung an die Nullstelle
-			double newZ = z - (dz / dLdz);
+			 double newZ = z - (dzProduction / dLdzProduction);
+			 /*
+			 System.out.println("dzProduction: " + dzProduction);
+			 System.out.println("dLzProduction: " + dLdzProduction);
+			 System.out.println("z: " + z);
+			 System.out.println("NewZ1: " + newZ);*/
 
 			// Begrenzen von newZ auf den Bereich von minPower bis maxPower
 			if (newZ < minPower) {
@@ -202,37 +250,77 @@ public class Agent {
 			} else if (newZ > maxPower) {
 				newZ = maxPower;
 			}
-
+			
 			// Überprüfen auf Konvergenz
 			if (Math.abs(newZ - z) < epsilon) {
 				break;
 			}
 
 			z = newZ;
+			setZ(z);
 
 		} while (true);
 
 		return z;
 	}
-
+	
 	public void DualUpdate() {
-		x = getCurrentX();
-		z = getCurrentZ();
-		lambda = lambda + penaltyFactor * (x + z);
-		mH2_nt = ProductionCoefficientA * Math.pow(x, 3) + ProductionCoefficientB * Math.pow(x, 2)
-				+ ProductionCoefficientC * x + ProductionCoefficientD;
+	    x = getCurrentX();
+	    z = getCurrentZ(); 
+	    ownCostChange = Math.abs(ownCostChange);
+	    
+	    mH2_nt = ProductionCoefficientA * Math.pow(x, 3) + ProductionCoefficientB * Math.pow(x, 2)
+        + ProductionCoefficientC * x + ProductionCoefficientD;
 
 		double demandDeviation = mH2_nt + sumProduction - Demand_t;
-		double energyDeviation = (PowerAvailable_t - x - sumPowerDemand);
-		System.out.printf("Agent %d\n", agentId);
 
-		if (demandDeviation > 0) {
-			System.out.printf("Demand Deviation (Ueberproduktion): %.3f\n", demandDeviation);
-		} else if (demandDeviation < 0) {
-			System.out.printf("Demand Deviation (Unterproduktion): %.3f\n", demandDeviation);
-		}
-		// System.out.printf("Energy Deviation: %.3f\n", energyDeviation);
+	 //Calculate Demand Deviation 
+	   double demandPercentage = Math.abs(demandDeviation / Demand_t) * 100; // Calculate demand deviation percentage
+	   
+	   if (demandDeviation > 0) {
+	     //  System.out.printf("Demand Deviation (Ueberproduktion): %.3f\n", demandDeviation);
+	       penaltyFactor = ((x-z)/z)+(maxCostChange - ownCostChange)/maxCostChange;
+	   } else if (demandDeviation < 0) {
+	   //    System.out.printf("Demand Deviation (Unterproduktion): %.3f\n", demandDeviation);
+	     //  System.out.println("(maxCostChange - ownCostChange)/maxCostChange)" + (maxCostChange - ownCostChange)/maxCostChange);
+	       penaltyFactor = ((x-z)/z - (maxCostChange - ownCostChange)/maxCostChange);
+	   }
+	   
+	   //Update Lambda 
+	   lambda = lambda + penaltyFactor*0.004;
 
+	   if (demandPercentage > 40) {
+	       System.out.printf("Iteration" + iteration +  " Demand Deviation: %.3f%% (>40)\n", demandPercentage);
+	       lambda = lambda * 1.0004; 
+	   } else if (demandPercentage > 30) {
+	      System.out.printf("Iteration" + iteration + "Demand Deviation: %.3f%% (>30)\n", demandPercentage);
+	       lambda = lambda * 1.0003; 
+	   } else if (demandPercentage > 20) {
+	       System.out.printf("Iteration" + iteration + "Demand Deviation: %.3f%% (>20)\n", demandPercentage);
+	       lambda = lambda * 1.0002;
+	   } else if (demandPercentage > 10) {
+	       System.out.printf("Iteration" + iteration + "Demand Deviation: %.3f%% (>10)\n", demandPercentage);
+	       lambda = lambda * 1.0001;
+	   } else if (demandPercentage > 5) {
+	      System.out.printf("Iteration" + iteration + "Demand Deviation: %.3f%% (>5)\n", demandPercentage);
+	       lambda = lambda * 1.0000001;
+	   } else if (demandPercentage > 2) {
+	       System.out.printf("Itera0tion" + iteration + "Demand Deviation: %.3f%% (>2)\n", demandPercentage);
+	       lambda = lambda * 1.00000001;
+	   } else if (demandPercentage > 1.5) {
+	       System.out.printf("Iteration" + iteration + "Demand Deviation: %.3f%% (>1.5)\n", demandPercentage);
+	       lambda = lambda * 1.0000000001;
+	   } else if (demandPercentage > 1.2) {
+	      System.out.printf("Iteration" + iteration + "Demand Deviation: %.3f%% (>1.2)\n", demandPercentage);
+	       lambda = lambda * 1.00000000001;
+	   } else if (demandPercentage > 1.1) {
+	       System.out.printf("Iteration" + iteration + "Demand Deviation: %.3f%% (>1.1)\n", demandPercentage);
+	       lambda = lambda * 1.000000000001;
+	   } else {
+	     //  System.out.printf("Demand Deviation: %.3f%% (Minimal deviation)\n", demandPercentage);
+	       lambda = lambda * 0.99999;
+	   }	   
+	   
 	}
 
 
@@ -271,58 +359,8 @@ public class Agent {
 		this.previousZ = previousZ;
 	}
 
-	public void writeLCOHToExcel() {
-		double minX = 5;
-		double maxX = 100;
-		String filePath = "D:\\Dokumente\\OneDrive - Helmut-Schmidt-Universität\\02_eModule\\AP4 - Integration\\Agentensystem\\ADMM\\LCOH.xlsx";
-
-		Workbook workbook = new XSSFWorkbook();
-		Sheet sheet = workbook.createSheet("Data");
-
-		// Write column headers
-		Row headerRow = sheet.createRow(0);
-		Cell headerCellX = headerRow.createCell(0);
-		headerCellX.setCellValue("Power [%]");
-		Cell headerCellCost = headerRow.createCell(1);
-		headerCellCost.setCellValue("LCOH per kg");
-		Cell headerCellMH2_nt = headerRow.createCell(2);
-		headerCellMH2_nt.setCellValue("Current MH2");
-		Cell headerCellCapExPerKg = headerRow.createCell(3);
-		headerCellCapExPerKg.setCellValue("CapEx per kg");
-		Cell headerCellOpExPerKg = headerRow.createCell(4);
-		headerCellOpExPerKg.setCellValue("OpEx per kg");
-
-		int rowIndex = 1;
-		for (double currentX = minX; currentX <= maxX; currentX++) {
-			Row dataRow = sheet.createRow(rowIndex);
-			Cell dataCellX = dataRow.createCell(0);
-			dataCellX.setCellValue(currentX);
-			Cell dataCellCost = dataRow.createCell(1);
-			double currentMH2_nt = ProductionCoefficientA * Math.pow(currentX, 3)
-					+ ProductionCoefficientB * Math.pow(currentX, 2) + ProductionCoefficientC * currentX
-					+ ProductionCoefficientD;
-			double CapExPerKg = (CapEX_nt + OMEx_nt) / currentMH2_nt;
-			double OpExPerKg = (MaxLeistung * currentX * Ae * ElectricityPrice) / currentMH2_nt;
-			double cost = OpExPerKg + CapExPerKg;
-			dataCellCost.setCellValue(cost);
-			Cell dataCellMH2_nt = dataRow.createCell(2);
-			dataCellMH2_nt.setCellValue(currentMH2_nt);
-			Cell dataCellCapExPerKg = dataRow.createCell(3);
-			dataCellCapExPerKg.setCellValue(CapExPerKg);
-			Cell dataCellOpExPerKg = dataRow.createCell(4);
-			dataCellOpExPerKg.setCellValue(OpExPerKg);
-			rowIndex++;
-		}
-
-		try (FileOutputStream fos = new FileOutputStream(filePath)) {
-			workbook.write(fos);
-		} catch (IOException e) {
-			e.printStackTrace();
-		}
-	}
 
 	// Ausgabe Abweichung
-
 	public void DemandDeviation() {
 		x = getCurrentX();
 		mH2_nt = ProductionCoefficientA * Math.pow(x, 3) + ProductionCoefficientB * Math.pow(x, 2)

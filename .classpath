@@ -11,6 +11,18 @@
 			<attribute name="javadoc_location" value="https://math.nist.gov/javanumerics/jama/doc/"/>
 		</attributes>
 	</classpathentry>
-	<classpathentry kind="src" path="/OPCUA"/>
+	<classpathentry kind="lib" path="D:/Dokumente/OneDrive - Helmut-Schmidt-Universität/04_Programmierung/JAR/poi-3.8-beta4.jar"/>
+	<classpathentry kind="lib" path="D:/Dokumente/OneDrive - Helmut-Schmidt-Universität/04_Programmierung/JAR/poi-3.8-beta4-sources.jar"/>
+	<classpathentry kind="lib" path="D:/Dokumente/OneDrive - Helmut-Schmidt-Universität/04_Programmierung/JAR/poi-ooxml-3.8-beta4.jar"/>
+	<classpathentry kind="lib" path="D:/Dokumente/OneDrive - Helmut-Schmidt-Universität/04_Programmierung/JAR/poi-ooxml-3.8-beta4-sources.jar"/>
+	<classpathentry kind="lib" path="D:/Dokumente/OneDrive - Helmut-Schmidt-Universität/04_Programmierung/JAR/poi-ooxml-schemas-3.8-beta4.jar"/>
+	<classpathentry kind="lib" path="D:/Dokumente/OneDrive - Helmut-Schmidt-Universität/04_Programmierung/JAR/dom4j-1.6.1.jar"/>
+	<classpathentry kind="lib" path="D:/Dokumente/OneDrive - Helmut-Schmidt-Universität/04_Programmierung/JAR/dom4j-1.6.1-sources.jar"/>
+	<classpathentry kind="lib" path="D:/Dokumente/OneDrive - Helmut-Schmidt-Universität/04_Programmierung/JAR/xmlbeans-2.3.0.jar"/>
+	<classpathentry kind="lib" path="D:/Dokumente/OneDrive - Helmut-Schmidt-Universität/04_Programmierung/JAR/xbean-reflect-3.4.jar"/>
+	<classpathentry kind="lib" path="D:/Dokumente/OneDrive - Helmut-Schmidt-Universität/04_Programmierung/JAR/poi-5.0.0.jar"/>
+	<classpathentry kind="lib" path="D:/Dokumente/OneDrive - Helmut-Schmidt-Universität/04_Programmierung/JAR/poi-5.0.0-sources.jar"/>
+	<classpathentry kind="lib" path="D:/Dokumente/OneDrive - Helmut-Schmidt-Universität/04_Programmierung/JAR/xml-apis-1.0.b2.jar"/>
+	<classpathentry kind="lib" path="D:/Dokumente/OneDrive - Helmut-Schmidt-Universität/04_Programmierung/JAR/xml-apis-1.0.b2-sources.jar"/>
 	<classpathentry kind="output" path="bin"/>
 </classpath>
