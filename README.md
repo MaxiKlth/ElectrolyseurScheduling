@@ -9,7 +9,7 @@ This project provides the source code for optimal load distribution on electroly
 ### Executing program
 
 ```bash
-git clone https://github.com/YourUsername/YourProject.git](https://github.com/MaxiKlth/ElectrolyseurScheduling.git
+git clone https://github.com/YourUserName/ElectrolyseurScheduling.git
 ```
 
 
