@@ -15,11 +15,7 @@ public class Matrix {
 	private List<Double> xValues; // Liste der x-Werte (Power)
 	private List<Double> zValues; // Liste der z-Werte
 	private List<Double> demandDeviation; // Nachfrageabweichung
-	private List<Double> costDeviation; // Kostenabweichung
-	private List<Double> objectiveFunction; // Zielfunktionswert
-	private List<Double> objectiveFunctionGradient; // Gradient der Zielfunktion inkl. der anderen Kosten
-	private List<Double> LCOHGradient; // Gradient LCOH
-	private List<Double> weightedLCOHGradient; // GradientLCOH*LCOH
+	private List<Double> mLCOHGradient; // Gradient LCOH
 	
 	//Anzahl an Agenten
 	private int numAgents;
@@ -36,16 +32,12 @@ public class Matrix {
 		xValues = new ArrayList<>();
 		zValues = new ArrayList<>();
 		demandDeviation = new ArrayList<>();
-		costDeviation = new ArrayList<>();
-		objectiveFunction = new ArrayList<>();
-		objectiveFunctionGradient = new ArrayList<>();
-		LCOHGradient = new ArrayList<>();
-		weightedLCOHGradient = new ArrayList<>();
+		mLCOHGradient = new ArrayList<>();
 	}
 
 	// Methode zum Eintragen der Daten
 	public void updateData(int agent, int iteration, double production, double costs, double lambda, double penaltyTerm,
-			double currentX, double currentZ, double demandDeviation, double costDeviation, double objectiveFunctionGradientValue, double LCOHGradientValue) {
+			double currentX, double currentZ, double demandDeviation, double mLCOHGradient) {
 		this.agents.add(agent);
 		this.iterations.add(iteration);
 		this.production.add(production);
@@ -55,31 +47,9 @@ public class Matrix {
 		this.xValues.add(currentX);
 		this.zValues.add(currentZ);
 		this.demandDeviation.add(demandDeviation);
-		this.costDeviation.add(costDeviation);
-		this.objectiveFunctionGradient.add(objectiveFunctionGradientValue);
-		this.LCOHGradient.add(LCOHGradientValue);
-		
-		//Objective Function  
-		double objectiveValue = costs * production;
-		this.objectiveFunction.add(objectiveValue);
-		
-		//Total Cost Change
-		double weightedLCOHValue = LCOHGradientValue*costs;
-		this.weightedLCOHGradient.add(weightedLCOHValue);
+		this.mLCOHGradient.add(mLCOHGradient);
 	}
 	
-	public double getMaxCostChange() {
-	    double maxWeightedLCOHGrad = 0.0;
-
-	    for (int i = 0; i < agents.size(); i++) {
-	        double currentCostChange = Math.abs(weightedLCOHGradient.get(i));
-	        if (currentCostChange > maxWeightedLCOHGrad) {
-	            maxWeightedLCOHGrad = currentCostChange;
-	        }
-	    }
-
-	    return maxWeightedLCOHGrad;
-	}
 
 	public double getCosts(int agentId, int iteration) {
 		double sum = 0;
@@ -165,7 +135,7 @@ public class Matrix {
 	    // Ermittle den minimalen und maximalen Wert von weightedLCOHGradient über alle Agenten
 	    for (int i = 0; i < agents.size(); i++) {
 	        if (iterations.get(i) == currentIteration) {
-	            double currentGradient = weightedLCOHGradient.get(i);
+	            double currentGradient = mLCOHGradient.get(i);
 	            minWeightedLCOHGradient = Math.min(minWeightedLCOHGradient, currentGradient);
 	            maxWeightedLCOHGradient = Math.max(maxWeightedLCOHGradient, currentGradient);
 	        }
@@ -194,7 +164,7 @@ public class Matrix {
 	    // Ermittle den minimalen und maximalen Wert von weightedLCOHGradient über alle Agenten
 	    for (int i = 0; i < agents.size(); i++) {
 	        if (iterations.get(i) == currentIteration) {
-	            double currentGradient = weightedLCOHGradient.get(i);
+	            double currentGradient = mLCOHGradient.get(i);
 	            minWeightedLCOHGradient = Math.min(minWeightedLCOHGradient, currentGradient);
 	            maxWeightedLCOHGradient = Math.max(maxWeightedLCOHGradient, currentGradient);
 	            totalProduction += production.get(i);
@@ -224,15 +194,14 @@ public class Matrix {
 
 
 	public void printMatrix() {
-	    System.out.printf("%-7s%-10s%-15s%-15s%-15s%-15s%-15s%-15s%-15s%-15s%-15s%-15s%-15s\n", "Agent", "Iteration",
-	            "Produktion", "LCOH", "Lambda", "Penalty", "X", "Z", "dZProduction", "OF",
-	            "OFGradient", "LCOHGradient", "weightedLCOH Grad");
+	    System.out.printf("%-7s%-10s%-15s%-15s%-15s%-15s%-15s%-15s%-15s\n", "Agent", "Iteration",
+	            "Produktion", "LCOH", "Lambda", "Penalty", "X", "Z", "mLCOHGradient");
+	    
 	    for (int i = 0; i < agents.size(); i++) {
 	        // Begrenzen der Nachkommastellen auf 2 Stellen
-	        System.out.printf("%-7d%-10d%-15.2f%-15.2f%-15.2f%-15.2f%-15.2f%-15.2f%-15.2f%-15.2f%-15.2f%-15.2f%-15.5f\n",
+	        System.out.printf("%-7d%-10d%-15.2f%-15.2f%-15.2f%-15.2f%-15.2f%-15.2f%-15.7f\n",
 	                agents.get(i), iterations.get(i), production.get(i), costs.get(i), lambdaValues.get(i),
-	                penaltyTerms.get(i), xValues.get(i), zValues.get(i), demandDeviation.get(i), objectiveFunction.get(i),
-	                objectiveFunctionGradient.get(i), LCOHGradient.get(i), weightedLCOHGradient.get(i));
+	                penaltyTerms.get(i), xValues.get(i), zValues.get(i), mLCOHGradient.get(i));
 	    }
 	}
 
@@ -253,11 +222,7 @@ public class Matrix {
 		headerRow.createCell(6).setCellValue("X");
 		headerRow.createCell(7).setCellValue("Z");
 		headerRow.createCell(8).setCellValue("dZProduction");
-		headerRow.createCell(9).setCellValue("dZCost");
-		headerRow.createCell(10).setCellValue("Objective");
-		headerRow.createCell(11).setCellValue("ObjectiveFunctionGradient");
-		headerRow.createCell(12).setCellValue("LCOHGradient");
-		headerRow.createCell(13).setCellValue("weighted LCOHGrad");
+		headerRow.createCell(9).setCellValue("mLCOHGradient");
 
 		// Schreibe die Ergebnisse in die Tabelle
 		for (int i = 0; i < agents.size(); i++) {
@@ -271,11 +236,7 @@ public class Matrix {
 			dataRow.createCell(6).setCellValue(xValues.get(i));
 			dataRow.createCell(7).setCellValue(zValues.get(i));
 			dataRow.createCell(8).setCellValue(demandDeviation.get(i));
-			dataRow.createCell(9).setCellValue(costDeviation.get(i));
-			dataRow.createCell(10).setCellValue(objectiveFunction.get(i));
-			dataRow.createCell(11).setCellValue(objectiveFunctionGradient.get(i));
-			dataRow.createCell(12).setCellValue(LCOHGradient.get(i));
-			dataRow.createCell(13).setCellValue(Math.abs(weightedLCOHGradient.get(i))); //Absolutwert notwendig?
+			dataRow.createCell(9).setCellValue(mLCOHGradient.get(i));
 		}
 
 		// Speichere die Excel-Datei
