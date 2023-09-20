@@ -35,27 +35,32 @@ public class Main {
 
 		// Erstellen Agent 1
 		Agent agent1 = new Agent(CapEx1, OMFactor1, minPower1, maxPower1, PEL1, ProdctionCoefficientA,
-				ProductionCoefficientB, ProductionCoefficientC, Demand_t);
+				ProductionCoefficientB, ProductionCoefficientC);
 		// Erstellen eines zweiten Agenten
 		Agent agent2 = new Agent(CapEx2, OMFactor2, minPower2, maxPower2, PEL2, ProdctionCoefficientA,
-				ProductionCoefficientB, ProductionCoefficientC, Demand_t);
+				ProductionCoefficientB, ProductionCoefficientC);
 		// Erstellen eines dritten Agenten
 		Agent agent3 = new Agent(CapEx3, OMFactor3, minPower3, maxPower3, PEL3, ProdctionCoefficientA,
-				ProductionCoefficientB, ProductionCoefficientC, Demand_t);
+				ProductionCoefficientB, ProductionCoefficientC);
 		
 		// Fügen Sie DSM-Informationen für verschiedene Perioden hinzu
-		agent1.addExternalDSMInformation(1, 100.0, 0.08); // Periode 1
-		agent2.addExternalDSMInformation(1, 100.0, 0.08); // Periode 1
-		agent3.addExternalDSMInformation(1, 100.0, 0.08); // Periode 1
+		agent1.addExternalDSMInformation(1, 380 * 1.88, 0.08); // Periode 1
+		agent2.addExternalDSMInformation(1, 380 * 1.88, 0.08); // Periode 1
+		agent3.addExternalDSMInformation(1, 380 * 1.88, 0.08); // Periode 1
 
-		agent1.addExternalDSMInformation(2, 110.0, 0.09); // Periode 2
-		agent2.addExternalDSMInformation(2, 110.0, 0.09); // Periode 2
-		agent3.addExternalDSMInformation(2, 110.0, 0.09); // Periode 2
+		agent1.addExternalDSMInformation(2, 380 * 2.5, 0.09); // Periode 2
+		agent2.addExternalDSMInformation(2, 380 * 2.5, 0.09); // Periode 2
+		agent3.addExternalDSMInformation(2, 380 * 2.5, 0.09); // Periode 2
 
-		agent1.addExternalDSMInformation(3, 95.0, 0.07); // Periode 3
-		agent2.addExternalDSMInformation(3, 95.0, 0.07); // Periode 3
-		agent3.addExternalDSMInformation(3, 95.0, 0.07); // Periode 3
+		agent1.addExternalDSMInformation(3, 380 * 1.4, 0.07); // Periode 3
+		agent2.addExternalDSMInformation(3, 380 * 1.4, 0.07); // Periode 3
+		agent3.addExternalDSMInformation(3, 380 * 1.4, 0.07); // Periode 3
 
+		agent1.addExternalDSMInformation(4, 380 * 2.4, 0.04); // Periode 3
+		agent2.addExternalDSMInformation(4, 380 * 2.4, 0.04); // Periode 3
+		agent3.addExternalDSMInformation(4, 380 * 2.4, 0.04); // Periode 3
+		
+		
 		// ----ADMM-----
 		boolean converged = false;
 		double epsilonProduction = 1;
@@ -67,48 +72,57 @@ public class Main {
 		agent2.initialization();
 		agent3.initialization();
 
-		int numRuns = 5;
-		while (!converged)
+		int numRuns = 4;
+		while (true) {
+		        // Step 1: Minimization of x
+		        agent1.minimizeLx();
+		        agent2.minimizeLx();
+		        agent3.minimizeLx();
 
-			for (int period = 1; period < 2; period++) {
-				for (int run = 0; run < numRuns; run++) {
-					// Step 1: Minimization of x
-					agent1.minimizeLx();
-					agent2.minimizeLx();
-					agent3.minimizeLx();
+		        // Step 2: Broadcast Information:
+		        agent1.BrodcastData(matrix);
+		        agent2.BrodcastData(matrix);
+		        agent3.BrodcastData(matrix);
 
-					// Step 2: Broadcast Information:
-					agent1.BrodcastData(matrix);
-					agent2.BrodcastData(matrix);
-					agent3.BrodcastData(matrix);
+		        // Step 3: Gather Information:
+		        agent1.Gather(matrix, iteration);
+		        agent2.Gather(matrix, iteration);
+		        agent3.Gather(matrix, iteration);
 
-					// Step 3: Gather Information:
-					agent1.Gather(matrix, iteration);
-					agent2.Gather(matrix, iteration);
-					agent3.Gather(matrix, iteration);
+		        // Step 4: Minimization of Z
+		        agent1.minimizeLz();
+		        agent2.minimizeLz();
+		        agent3.minimizeLz();
 
-					// Step 4: Minimization of Z
-					agent1.minimizeLz();
-					agent2.minimizeLz();
-					agent3.minimizeLz();
+		        agent1.DualUpdate();
+		        agent2.DualUpdate();
+		        agent3.DualUpdate();
 
-					// Step 5: Dual Update
-					agent1.DualUpdate();
-					agent2.DualUpdate();
-					agent3.DualUpdate();
+		        // Check if termination criterion is reached
+		        //converged = matrix.isConvergedProduction(Demand_t, epsilonProduction, iteration);
+		        converged = agent1.schedulingComplete();
+		        
+		        if (converged == true) {
+		            break; // Beendet die innere Schleife, wenn converged true ist
+		        }
 
-					// Check if termination criterion is reached
-					converged = matrix.isConvergedProduction(Demand_t, epsilonProduction, iteration);
+		        // Increase Iteration
+		        iteration++;
+		}
 
-					// Increase Iteration
-					iteration++;
-				}
-			}
+		
+		System.out.println("------- Agent 1  ---------");
+		agent1.getOptimizationResults();
+		
+		System.out.println("------- Agent 2  ---------");
+		agent2.getOptimizationResults();
+		
+		System.out.println("------- Agent 3  ---------");
+		agent3.getOptimizationResults();
 
 		// Ausgabe der Ergebnisse
-	//	matrix.printMatrix();
+//	matrix.printMatrix();
 	//	matrix.writeMatrixToExcel();
-		agent1.DemandDeviation();
 
 		// Computation Time
 		long endTime = System.currentTimeMillis();

@@ -18,15 +18,16 @@ public class Agent {
 	private double ProductionCoefficientA;
 	private double ProductionCoefficientB;
 	private double ProductionCoefficientC;
-	private double Demand_t; // Demand in Period t
-	private double ElectricityPrice = 0.08; // Current Electricity Price (€/kWh)
+	private double Demand; // Demand in Period t
+	private double ElectricityPrice; // Current Electricity Price (€/kWh)
 
 	// ADMM - Lagrange Multiplicators
 	private double lambda; // Lagrange-Multiplicator for Demand Constraint
 	private double penaltyFactor; // Penalty-Term
 	private int iteration = 0; // Iteration
-	private double epsilonProduction = 1; //Tolerable deviation from the required production quantity 
-	private int currentPeriod = 1; 
+	private double epsilonProduction = 1; // Tolerable deviation from the required production quantity
+	private int currentPeriod = 1;
+	private boolean schedulingComplete = false;
 
 	// Gather-Information
 	private double sumProduction;
@@ -37,7 +38,7 @@ public class Agent {
 
 	// HashMap to save Optimization Results
 	private OptimizationResult optimizationResult = new OptimizationResult();
-	
+
 	// Liste zur Abspeicherung von Strompreis und Nachfrage
 	private Map<Integer, Map<String, Double>> externalInformation = new HashMap<>();
 
@@ -56,8 +57,7 @@ public class Agent {
 
 	// Constructor
 	public Agent(double CapEx, double OMFactor, double minPower, double maxPower, double Pel,
-			double ProductionCoefficientA, double ProductionCoefficientB, double ProductionCoefficientC,
-			double Demand_t) {
+			double ProductionCoefficientA, double ProductionCoefficientB, double ProductionCoefficientC) {
 		agentId = agentCounter++; // Agenten-ID erhöhen und zuweisen
 		this.CapEx = CapEx;
 		this.OMFactor = OMFactor;
@@ -67,7 +67,6 @@ public class Agent {
 		this.ProductionCoefficientA = ProductionCoefficientA;
 		this.ProductionCoefficientB = ProductionCoefficientB;
 		this.ProductionCoefficientC = ProductionCoefficientC;
-		this.Demand_t = Demand_t;
 
 		// Calculate Constant Parameters
 		this.CapEX_nt = CapEx / (n * 8760);
@@ -105,13 +104,16 @@ public class Agent {
 		sumProduction = matrix.getProduction(agentId, iteration);
 		double demandDeviation = DemandDeviation();
 		
-		if (demandDeviation < epsilonProduction){
-			
-	        optimizationResult.addResult(currentPeriod, demandDeviation, false, false, true, getCurrentX(), calculatemLCOH(getCurrentX()), calculateProductionQuantity(getCurrentX()), getDemandForPeriod(currentPeriod));
-		//	System.out.println("Parametersatz geschrieben");
-	        currentPeriod ++;
+		if (periodScheduled() == true) {
+			System.out.println("Optimierungsergebnisse schreiben");
+			ElectricityPrice = getElectricityPriceForPeriod(currentPeriod);
+			optimizationResult.addResult(currentPeriod, ElectricityPrice, false, false, true, getCurrentX(),
+					calculatemLCOH(getCurrentX()), calculateProductionQuantity(getCurrentX()),
+					getDemandForPeriod(currentPeriod));
+			schedulingComplete();
+			currentPeriod++;
 		}
-		
+
 	}
 
 	// ----- Optimization -----
@@ -134,6 +136,7 @@ public class Agent {
 	public double minimizeLx() {
 		double min_x_value = minPower; // Initialisieren Sie min_x_value mit minPower
 		double min_mLCOH = Double.POSITIVE_INFINITY;
+		ElectricityPrice = getElectricityPriceForPeriod(currentPeriod);
 
 		// Loop over all x-Values
 		for (double x = minPower; x <= maxPower; x += 0.003) {
@@ -154,16 +157,19 @@ public class Agent {
 		return min_x_value;
 	}
 
+	// ----- Minimization of Z -----
+	
 	public double minimizeLz() {
 		double increment = 0.0003;
-
+		Demand = getDemandForPeriod(currentPeriod);
+	
 		double minDiffToZero = Double.POSITIVE_INFINITY; // Initialisieren Sie minDiffToZero mit einem hohen Wert
 		double minZ = minPower; // Initialisieren Sie minZ mit minPower
 
 		// Schleife, um verschiedene Werte für Z auszuprobieren
 		for (double z = minPower; z <= maxPower; z += increment) {
 			double dzProduction = sumProduction + ProductionCoefficientA * Math.pow(z, 2) + ProductionCoefficientB * z
-					+ ProductionCoefficientC - Demand_t + lambda * (x - z);
+					+ ProductionCoefficientC - Demand + lambda * (x - z);
 			double diffToZero = Math.abs(dzProduction - 0);
 
 			// Wenn die aktuelle Differenz zu 0 kleiner als das bisherige Minimum ist,
@@ -173,7 +179,7 @@ public class Agent {
 				minZ = z;
 			}
 		}
-
+		
 		setZ(minZ);
 		return minZ;
 	}
@@ -184,11 +190,11 @@ public class Agent {
 		mH2_nt = calculateProductionQuantity(getCurrentX());
 
 		// Calculate Demand Deviation
-		double demandDeviation = mH2_nt + sumProduction - Demand_t;
-		double demandPercentage = Math.abs(demandDeviation / Demand_t) * 100; // Calculate demand deviation percentage
+		double demandDeviation = DemandDeviation();
+		double demandPercentage = Math.abs(demandDeviation / getDemandForPeriod(currentPeriod)) * 100; // Calculate demand deviation percentage
 
 		// Update Lambda
-		penaltyFactor = 0.0002;
+		penaltyFactor = 0.0008;//0.0002 vorher
 		lambda = lambda + (penaltyFactor * calculateGradientmLCOH(getCurrentX()) / demandPercentage) * (x - z);
 	}
 
@@ -196,6 +202,7 @@ public class Agent {
 
 	public double calculateGradientmLCOH(double x) {
 		// TODO:Lambda ergänzen?
+		ElectricityPrice = getElectricityPriceForPeriod(currentPeriod);
 		double gradientmLCOH = (ElectricityPrice * PEL) / (100
 				* (ProductionCoefficientA * Math.pow(x, 2) + ProductionCoefficientB * x + ProductionCoefficientC))
 				- (ElectricityPrice * PEL * x * (2 * ProductionCoefficientA * x + ProductionCoefficientB))
@@ -211,8 +218,36 @@ public class Agent {
 	}
 
 	public double calculatemLCOH(double x) {
+		ElectricityPrice = getElectricityPriceForPeriod(currentPeriod);
 		double mLCOH = (CapEX_nt + OMEx_nt) / mH2_nt + (PEL * x / 100 * ElectricityPrice) / mH2_nt;
 		return mLCOH;
+	}
+	
+	public boolean periodScheduled() {
+		
+		boolean periodScheduled = false;
+		double demandDeviation = DemandDeviation();
+		
+		if (Math.abs(demandDeviation) < epsilonProduction  && currentPeriod <= getLastPeriod()) {
+			periodScheduled = true;
+		}
+		return periodScheduled;
+	}
+	
+	public boolean schedulingComplete() {
+		
+		double demandDeviation = DemandDeviation();
+		
+		if (Math.abs(demandDeviation) < epsilonProduction  && currentPeriod == getLastPeriod()) {
+			schedulingComplete = true;
+		}
+		
+		return schedulingComplete;
+	}
+	
+
+	public void getOptimizationResults() {
+		optimizationResult.printOptimizationResults();
 	}
 
 	// Getter und Setter
@@ -251,33 +286,61 @@ public class Agent {
 	// Ausgabe Abweichung
 	public double DemandDeviation() {
 		mH2_nt = calculateProductionQuantity(getCurrentX());
-		double demandDeviation = mH2_nt + sumProduction - Demand_t;
-		//System.out.printf("Die Abweichung zur Zielmenge betraegt: %.3f\n", demandDeviation);
+		Demand = getDemandForPeriod(currentPeriod);
+		double demandDeviation = mH2_nt + sumProduction - Demand;
 		return demandDeviation;
 	}
+
+	// Method for getting the price of electricity for a given period
+	public Double getElectricityPriceForPeriod(int period) {
+	    int lastPeriod = getLastPeriod();
+
+	    // If period is greater than lastPeriod, set period to lastPeriod
+	    if (period > lastPeriod) {
+	        period = lastPeriod;
+	    }
+
+	    if (externalInformation.containsKey(period)) {
+	        Map<String, Double> DSMInfo = externalInformation.get(period);
+	        return DSMInfo.get("ElectricityPrice");
+	    } else {
+	        // Period not found, optionally return null
+	        System.out.println("Null");
+	        return null;
+	    }
+	}
+
+
+	// Method of getting the demand for a certain period
+	public Double getDemandForPeriod(int period) {
+		int lastPeriod = getLastPeriod();
+		
+	    // If period is greater than lastPeriod, set period to lastPeriod
+	    if (period > lastPeriod) {
+	        period = lastPeriod;
+	    }
+		
+		if (externalInformation.containsKey(period)) {
+			Map<String, Double> DSMInfo = externalInformation.get(period);
+			return DSMInfo.get("Demand");
+		} else {
+			// Period not found, optionally return null
+			return null;
+		}
+	}
 	
-    // Method for getting the price of electricity for a given period
-    public Double getElectricityPriceForPeriod(int period) {
-        if (externalInformation.containsKey(period)) {
-            Map<String, Double> DSMInfo = externalInformation.get(period);
-            return DSMInfo.get("ElectricityPrice");
-        } else {
-            // Period not found, optionally return null
-        	System.out.println("Null");
-            return null;
-        }
-    }
-    
-    // Method of getting the demand for a certain period
-    public Double getDemandForPeriod(int period) {
-        if (externalInformation.containsKey(period)) {
-            Map<String, Double> DSMInfo = externalInformation.get(period);
-            return DSMInfo.get("Demand");
-        } else {
-            // Period not found, optionally return null
-            return null;
-        }
-    }
+	
+	public int getLastPeriod() {
+	    int lastPeriod = -1; // Initialisieren Sie lastPeriod mit einem ungültigen Wert
+
+	    for (int period : externalInformation.keySet()) {
+	        if (period > lastPeriod) {
+	            lastPeriod = period;
+	        }
+	    }
+
+	    return lastPeriod;
+	}
 
 
 }
