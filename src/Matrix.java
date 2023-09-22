@@ -16,6 +16,7 @@ public class Matrix {
 	private List<Double> zValues; // Liste der z-Werte
 	private List<Double> demandDeviation; // Nachfrageabweichung
 	private List<Double> mLCOHGradient; // Gradient LCOH
+	private List<Integer> period; // Periods
 	
 	//Anzahl an Agenten
 	private int numAgents;
@@ -33,10 +34,11 @@ public class Matrix {
 		zValues = new ArrayList<>();
 		demandDeviation = new ArrayList<>();
 		mLCOHGradient = new ArrayList<>();
+		period = new ArrayList<>();
 	}
 
 	// Methode zum Eintragen der Daten
-	public void updateData(int agent, int iteration, double production, double costs, double lambda, double penaltyTerm,
+	public void updateData(int period, int agent, int iteration, double production, double costs, double lambda, double penaltyTerm,
 			double currentX, double currentZ, double demandDeviation, double mLCOHGradient) {
 		this.agents.add(agent);
 		this.iterations.add(iteration);
@@ -48,6 +50,7 @@ public class Matrix {
 		this.zValues.add(currentZ);
 		this.demandDeviation.add(demandDeviation);
 		this.mLCOHGradient.add(mLCOHGradient);
+		this.period.add(period);
 	}
 	
 
@@ -194,13 +197,13 @@ public class Matrix {
 
 
 	public void printMatrix() {
-	    System.out.printf("%-7s%-10s%-15s%-15s%-15s%-15s%-15s%-15s%-15s\n", "Agent", "Iteration",
+	    System.out.printf("%-7s%-7s%-10s%-15s%-15s%-15s%-15s%-15s%-15s%-15s\n", "Period", "Agent", "Iteration",
 	            "Produktion", "LCOH", "Lambda", "Penalty", "X", "Z", "mLCOHGradient");
 	    
 	    for (int i = 0; i < agents.size(); i++) {
 	        // Begrenzen der Nachkommastellen auf 2 Stellen
-	        System.out.printf("%-7d%-10d%-15.2f%-15.2f%-15.2f%-15.2f%-15.2f%-15.2f%-15.7f\n",
-	                agents.get(i), iterations.get(i), production.get(i), costs.get(i), lambdaValues.get(i),
+	        System.out.printf("%-7d%-7d%-10d%-15.2f%-15.2f%-15.2f%-15.2f%-15.2f%-15.2f%-15.7f\n", 
+	               period.get(i), agents.get(i), iterations.get(i), production.get(i), costs.get(i), lambdaValues.get(i),
 	                penaltyTerms.get(i), xValues.get(i), zValues.get(i), mLCOHGradient.get(i));
 	    }
 	}
@@ -213,30 +216,32 @@ public class Matrix {
 
 		// Erzeuge eine Überschriftsreihe
 		Row headerRow = sheet.createRow(0);
-		headerRow.createCell(0).setCellValue("Agent");
-		headerRow.createCell(1).setCellValue("Iteration");
-		headerRow.createCell(2).setCellValue("Produktion");
-		headerRow.createCell(3).setCellValue("Kosten");
-		headerRow.createCell(4).setCellValue("Lambda");
-		headerRow.createCell(5).setCellValue("Penalty");
-		headerRow.createCell(6).setCellValue("X");
-		headerRow.createCell(7).setCellValue("Z");
-		headerRow.createCell(8).setCellValue("dZProduction");
-		headerRow.createCell(9).setCellValue("mLCOHGradient");
+		headerRow.createCell(0).setCellValue("Periode");
+		headerRow.createCell(1).setCellValue("Agent");
+		headerRow.createCell(2).setCellValue("Iteration");
+		headerRow.createCell(3).setCellValue("Produktion");
+		headerRow.createCell(4).setCellValue("Kosten");
+		headerRow.createCell(5).setCellValue("Lambda");
+		headerRow.createCell(6).setCellValue("Penalty");
+		headerRow.createCell(7).setCellValue("X");
+		headerRow.createCell(8).setCellValue("Z");
+		headerRow.createCell(9).setCellValue("dZProduction");
+		headerRow.createCell(10).setCellValue("mLCOHGradient");
 
 		// Schreibe die Ergebnisse in die Tabelle
 		for (int i = 0; i < agents.size(); i++) {
 			Row dataRow = sheet.createRow(i + 1);
-			dataRow.createCell(0).setCellValue(agents.get(i));
-			dataRow.createCell(1).setCellValue(iterations.get(i));
-			dataRow.createCell(2).setCellValue(production.get(i));
-			dataRow.createCell(3).setCellValue(costs.get(i));
-			dataRow.createCell(4).setCellValue(lambdaValues.get(i));
-			dataRow.createCell(5).setCellValue(penaltyTerms.get(i));
-			dataRow.createCell(6).setCellValue(xValues.get(i));
-			dataRow.createCell(7).setCellValue(zValues.get(i));
-			dataRow.createCell(8).setCellValue(demandDeviation.get(i));
-			dataRow.createCell(9).setCellValue(mLCOHGradient.get(i));
+			dataRow.createCell(0).setCellValue(period.get(i));
+			dataRow.createCell(1).setCellValue(agents.get(i));
+			dataRow.createCell(2).setCellValue(iterations.get(i));
+			dataRow.createCell(3).setCellValue(production.get(i));
+			dataRow.createCell(4).setCellValue(costs.get(i));
+			dataRow.createCell(5).setCellValue(lambdaValues.get(i));
+			dataRow.createCell(6).setCellValue(penaltyTerms.get(i));
+			dataRow.createCell(7).setCellValue(xValues.get(i));
+			dataRow.createCell(8).setCellValue(zValues.get(i));
+			dataRow.createCell(9).setCellValue(demandDeviation.get(i));
+			dataRow.createCell(10).setCellValue(mLCOHGradient.get(i));
 		}
 
 		// Speichere die Excel-Datei

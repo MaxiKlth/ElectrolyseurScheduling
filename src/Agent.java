@@ -1,5 +1,7 @@
 import java.util.HashMap;
+
 import java.util.Map;
+
 
 public class Agent {
 	// Agent-Classification
@@ -20,7 +22,7 @@ public class Agent {
 	private double ProductionCoefficientC;
 	private double Demand; // Demand in Period t
 	private double ElectricityPrice; // Current Electricity Price (€/kWh)
-
+	
 	// ADMM - Lagrange Multiplicators
 	private double lambda; // Lagrange-Multiplicator for Demand Constraint
 	private double penaltyFactor; // Penalty-Term
@@ -28,7 +30,11 @@ public class Agent {
 	private double epsilonProduction = 1; // Tolerable deviation from the required production quantity
 	private int currentPeriod = 1;
 	private boolean schedulingComplete = false;
-
+	
+	private boolean stateProduction;
+	private boolean stateStandby;
+	private boolean stateIdle;
+	
 	// Gather-Information
 	private double sumProduction;
 	private double dzProduction;
@@ -54,10 +60,12 @@ public class Agent {
 		DSMInfo.put("Demand", demand);
 		DSMInfo.put("ElectricityPrice", electricityPrice);
 	}
+	
+
 
 	// Constructor
 	public Agent(double CapEx, double OMFactor, double minPower, double maxPower, double Pel,
-			double ProductionCoefficientA, double ProductionCoefficientB, double ProductionCoefficientC) {
+			double ProductionCoefficientA, double ProductionCoefficientB, double ProductionCoefficientC, boolean initialState) {
 		agentId = agentCounter++; // Agenten-ID erhöhen und zuweisen
 		this.CapEx = CapEx;
 		this.OMFactor = OMFactor;
@@ -67,6 +75,7 @@ public class Agent {
 		this.ProductionCoefficientA = ProductionCoefficientA;
 		this.ProductionCoefficientB = ProductionCoefficientB;
 		this.ProductionCoefficientC = ProductionCoefficientC;
+		this.stateProduction = initialState;
 
 		// Calculate Constant Parameters
 		this.CapEX_nt = CapEx / (n * 8760);
@@ -93,8 +102,14 @@ public class Agent {
 		double mLCOHGradient = calculateGradientmLCOH(x);
 
 		// Update Matrix
-		matrix.updateData(this.agentId, this.iteration, productionQuantity, cost, lambda, penaltyfactor, x, z,
+		matrix.updateData(currentPeriod, this.agentId, this.iteration, productionQuantity, cost, lambda, penaltyfactor, x, z,
 				dzProduction, mLCOHGradient);
+		
+		if(agentId == 2) {
+	//	System.out.println("DemandDeviation: " + DemandDeviation());
+	//	System.out.println("X: " + getCurrentX());
+		
+		}
 		this.iteration++;
 	}
 
@@ -105,9 +120,8 @@ public class Agent {
 		double demandDeviation = DemandDeviation();
 		
 		if (periodScheduled() == true) {
-			System.out.println("Optimierungsergebnisse schreiben");
 			ElectricityPrice = getElectricityPriceForPeriod(currentPeriod);
-			optimizationResult.addResult(currentPeriod, ElectricityPrice, false, false, true, getCurrentX(),
+			optimizationResult.addResult(currentPeriod, ElectricityPrice, stateStandby, stateIdle, stateProduction, getCurrentX(),
 					calculatemLCOH(getCurrentX()), calculateProductionQuantity(getCurrentX()),
 					getDemandForPeriod(currentPeriod));
 			schedulingComplete();
@@ -134,27 +148,43 @@ public class Agent {
 	// ----- Minimization of X -----
 
 	public double minimizeLx() {
-		double min_x_value = minPower; // Initialisieren Sie min_x_value mit minPower
-		double min_mLCOH = Double.POSITIVE_INFINITY;
-		ElectricityPrice = getElectricityPriceForPeriod(currentPeriod);
+	    double min_x_value = minPower; // Initialisieren Sie min_x_value mit minPower
+	    double min_mLCOH = Double.POSITIVE_INFINITY;
+	    double toleranceMinPower = 0.01; // Toleranzschwelle, hier auf 0,01 (1%) eingestellt
+	    ElectricityPrice = getElectricityPriceForPeriod(currentPeriod);
 
-		// Loop over all x-Values
-		for (double x = minPower; x <= maxPower; x += 0.003) {
-			mH2_nt = calculateProductionQuantity(x);
-			double mLCOH = (CapEX_nt + OMEx_nt) / mH2_nt + (PEL * x / 100 * ElectricityPrice) / mH2_nt
-					+ lambda * (x - z);
+	    // Überprüfen Sie, ob der Elektrolyseur sich im Produktionsmodus befindet
+	   if (stateProduction) {
+	        // Loop über alle x-Werte
+	       // for (double x = minPower; x <= maxPower; x += 0.003) {
+	        	for (double x = 0; x <= maxPower; x += 0.003) {
+	            mH2_nt = calculateProductionQuantity(x);
+	            double mLCOH = (CapEX_nt + OMEx_nt) / mH2_nt + (PEL * x / 100 * ElectricityPrice) / mH2_nt
+	                    + lambda * (x - z);
 
-			// If the current mLCOH value is less than the previous minimum, update the
-			// minimum and the X value
-			if (mLCOH < min_mLCOH) {
-				min_mLCOH = mLCOH;
-				min_x_value = x;
-			}
+	            // Wenn der aktuelle mLCOH-Wert kleiner als das vorherige Minimum ist,
+	            // aktualisieren Sie das Minimum und den X-Wert
+	            if (mLCOH < min_mLCOH) {
+	                min_mLCOH = mLCOH;
+	                min_x_value = x;
+	            }
+	        }
+	   } 
+	   else {
+	        // Der Elektrolyseur ist nicht im Produktionsmodus, daher ist die Produktion 0
+	        min_x_value = 0.0;
+	    }
+	   
+		
+		if(Math.abs(min_x_value - minPower) < toleranceMinPower  && agentId == 2) {
+			System.out.println("Minx:" + x);
+			stateProduction = false;
+			stateStandby = true;
 		}
 
-		// Return the X value at which mLCOH is minimum
-		setX(min_x_value);
-		return min_x_value;
+	    // Rückgabe des X-Werts, bei dem mLCOH minimal ist
+	    setX(min_x_value);
+	    return min_x_value;
 	}
 
 	// ----- Minimization of Z -----
@@ -162,27 +192,37 @@ public class Agent {
 	public double minimizeLz() {
 		double increment = 0.0003;
 		Demand = getDemandForPeriod(currentPeriod);
-	
-		double minDiffToZero = Double.POSITIVE_INFINITY; // Initialisieren Sie minDiffToZero mit einem hohen Wert
-		double minZ = minPower; // Initialisieren Sie minZ mit minPower
 
-		// Schleife, um verschiedene Werte für Z auszuprobieren
-		for (double z = minPower; z <= maxPower; z += increment) {
-			double dzProduction = sumProduction + ProductionCoefficientA * Math.pow(z, 2) + ProductionCoefficientB * z
-					+ ProductionCoefficientC - Demand + lambda * (x - z);
-			double diffToZero = Math.abs(dzProduction - 0);
+		// Überprüfen Sie, ob der Elektrolyseur sich im Produktionsmodus befindet
+			double minDiffToZero = Double.POSITIVE_INFINITY; // Initialisieren Sie minDiffToZero mit einem hohen Wert
+			double minZ = minPower; // Initialisieren Sie minZ mit minPower
 
-			// Wenn die aktuelle Differenz zu 0 kleiner als das bisherige Minimum ist,
-			// aktualisieren Sie das Minimum und den Z-Wert
-			if (diffToZero < minDiffToZero) {
-				minDiffToZero = diffToZero;
-				minZ = z;
+			if(stateProduction) {
+			// Schleife, um verschiedene Werte für Z auszuprobieren
+			for (double z = minPower; z <= maxPower; z += increment) {
+
+				double dzProduction = sumProduction + ProductionCoefficientA * Math.pow(z, 2)
+						+ ProductionCoefficientB * z + ProductionCoefficientC - Demand + lambda * (x - z);
+				double diffToZero = Math.abs(dzProduction - 0);
+
+				// Wenn die aktuelle Differenz zu 0 kleiner als das bisherige Minimum ist,
+				// aktualisieren Sie das Minimum und den Z-Wert
+				if (diffToZero < minDiffToZero) {
+					minDiffToZero = diffToZero;
+					minZ = z;
+				}
 			}
-		}
-		
-		setZ(minZ);
-		return minZ;
+			}
+			else {
+				minZ = 0;
+			}
+
+			setZ(minZ);
+
+
+		return getCurrentZ();
 	}
+	
 
 	public void DualUpdate() {
 		x = getCurrentX();
@@ -192,9 +232,10 @@ public class Agent {
 		// Calculate Demand Deviation
 		double demandDeviation = DemandDeviation();
 		double demandPercentage = Math.abs(demandDeviation / getDemandForPeriod(currentPeriod)) * 100; // Calculate demand deviation percentage
+	//	System.out.println("DemandDeviation: " + demandDeviation);
 
 		// Update Lambda
-		penaltyFactor = 0.0008;//0.0002 vorher
+		penaltyFactor = 0.09;//0.0002 vorher
 		lambda = lambda + (penaltyFactor * calculateGradientmLCOH(getCurrentX()) / demandPercentage) * (x - z);
 	}
 
@@ -212,16 +253,30 @@ public class Agent {
 	}
 
 	public double calculateProductionQuantity(double x) {
-		double productionQuantity = ProductionCoefficientA * Math.pow(x, 2) + ProductionCoefficientB * x
-				+ ProductionCoefficientC;
+		double  productionQuantity;
+		
+		if(stateProduction) {
+		productionQuantity = ProductionCoefficientA * Math.pow(x, 2) + ProductionCoefficientB * x
+				+ ProductionCoefficientC;}
+		else {
+			productionQuantity = 0;
+		}
 		return productionQuantity;
 	}
 
 	public double calculatemLCOH(double x) {
-		ElectricityPrice = getElectricityPriceForPeriod(currentPeriod);
-		double mLCOH = (CapEX_nt + OMEx_nt) / mH2_nt + (PEL * x / 100 * ElectricityPrice) / mH2_nt;
-		return mLCOH;
+	    ElectricityPrice = getElectricityPriceForPeriod(currentPeriod);
+	    
+	    // Überprüfen Sie, ob der Elektrolyseur sich im Produktionsmodus befindet
+	    if (stateProduction) {
+	        double mLCOH = (CapEX_nt + OMEx_nt) / mH2_nt + (PEL * x / 100 * ElectricityPrice) / mH2_nt;
+	        return mLCOH;
+	    } else {
+	        // Der Elektrolyseur ist nicht im Produktionsmodus, daher gibt es keine Kosten (Rückgabe von 0)
+	        return 0.0;
+	    }
 	}
+
 	
 	public boolean periodScheduled() {
 		
